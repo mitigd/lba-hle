@@ -93,6 +93,7 @@ void LimitPresents(Machine& m) {
 // Copies a rectangle (inclusive corners) of the game's screen buffer to the host 640x480
 // picture and presents it. This is what every banked A0000h copy in the original does.
 void Present(Machine& m, int x1, int y1, int x2, int y2) {
+    if (WideInPass()) return;   // a widescreen strip pass is drawing; the real frame is presented
     if (x2 < x1 || y2 < y1 || x1 < 0 || y1 < 0 || x2 > 639 || y2 > 479) return;
     uint32_t pitch = m.vm.Rd32(D(m, kVideoPitch));
     if (!pitch) pitch = m.vm.Rd32(D(m, kScreenWidth));
@@ -106,7 +107,8 @@ void Present(Machine& m, int x1, int y1, int x2, int y2) {
         memcpy(&frame[(size_t)(y1 + y) * 640 + x1], src, (size_t)w);
     }
     LimitPresents(m);
-    m.PresentFrame(frame.data(), 640, 480, 4.0 / 3.0);
+    if (WideActive(m)) PresentWide(m, frame.data());
+    else m.PresentFrame(frame.data(), 640, 480, 4.0 / 3.0);
 }
 
 // FUN_0002701A(x1, y1, x2, y2): copies a rectangle from the game's screen buffer to the
@@ -126,9 +128,14 @@ void PresentClipped(Machine& m) {
 }
 
 // FUN_000272CD(): the whole 640x480 screen buffer to the banked window, five bank switches.
-void PresentAll(Machine& m) { Present(m, 0, 0, 639, 479); }
+void PresentAll(Machine& m) {
+    WideFullScreen(m);
+    Present(m, 0, 0, 639, 479);
+}
 
 }  // namespace
+
+void RefreshPicture(Machine& m) { Present(m, 0, 0, 639, 479); }
 
 SeamList Video() {
     using namespace std::chrono;

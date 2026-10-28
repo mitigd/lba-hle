@@ -17,6 +17,7 @@ SeamList All() {
     append(Sound());
     append(Timing());
     append(Settings());
+    append(Widescreen());
     append(Music());
     append(Samples());
     return seams;

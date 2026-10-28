@@ -44,6 +44,8 @@ constexpr uint32_t kMusicVolume = 0x42c1c;   // music volume setting, 0..127
 constexpr uint32_t kMidiParamNames = 0x42c04;// list of driver settings; entry 3 is the empty terminator
 constexpr uint32_t kMidiParamValues = 0x5d4d8;
 constexpr uint32_t kWaveOn = 0x42bd4;        // digital sound available
+constexpr uint32_t kProjCenterX = 0x422b4;   // iso projection origin on screen; actors and bodies are projected through it
+constexpr uint32_t kBackBuffer = 0x4c268;    // clean room background; dirty rectangles are restored from it
 constexpr uint32_t kCdDrive = 0x42c32;     // MSCDEX drive number, FFFFh = none
 constexpr uint32_t kTickCounter = 0x42b9c;  // 50 Hz tick counter
 constexpr uint32_t kTickFrame = 0x42ba0;    // latched game frame tick
@@ -70,6 +72,13 @@ SeamList Input();
 SeamList Sound();
 SeamList Timing();
 SeamList Settings();
+SeamList Widescreen();
+// Widescreen: true when config.ini asks for it; PresentWide shows the 640x480 picture with the strips.
+bool WideActive(hlekit::Machine& m);
+void WideFullScreen(hlekit::Machine& m);   // call on a full-screen present
+bool WideInPass();                         // a strip pass is running: nothing may be presented
+void RefreshPicture(hlekit::Machine& m);   // present the game's current screen again
+void PresentWide(hlekit::Machine& m, const uint8_t* picture);
 SeamList Music();
 SeamList Samples();
 // Per-tick work of the sound modules (music sequencer, mixer clock); called from the 50 Hz tick.

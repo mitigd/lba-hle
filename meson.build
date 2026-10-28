@@ -14,6 +14,7 @@ game_src = files(
   'src/seams/sound.cpp',
   'src/seams/timing.cpp',
   'src/seams/settings.cpp',
+  'src/seams/widescreen.cpp',
   'src/seams/music.cpp',
   'src/seams/samples.cpp',
 )

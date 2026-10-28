@@ -30,6 +30,28 @@ bool g_valid = false;
 bool g_inPass = false;
 Machine::Snapshot g_snap;
 
+// What drawing a frame can change: the game's data object (actor records, dirty-rectangle list,
+// clip window, projection globals), the screen and the back buffer. Nothing in the heap is written
+// by drawing, so this is all a strip pass needs to put back - far less than a whole-memory snapshot.
+struct Mini {
+    struct Range { uint32_t at; std::vector<uint8_t> bytes; };
+    std::vector<Range> ranges;
+    void Take(Machine& m) {
+        ranges.clear();
+        auto add = [&](uint32_t a, uint32_t n) {
+            if (const uint8_t* p = m.vm.Ptr(a, n)) ranges.push_back({a, std::vector<uint8_t>(p, p + n)});
+        };
+        for (auto& r : m.regions)
+            if (!(r.flags & 4)) add(r.base, r.size);
+        add(m.vm.Rd32(D(m, kScreenBase)), kW * kH);
+        add(m.vm.Rd32(D(m, kBackBuffer)), kW * kH);
+    }
+    void Restore(Machine& m) {
+        for (auto& r : ranges) m.vm.Write(r.at, r.bytes.data(), (uint32_t)r.bytes.size());
+    }
+};
+Mini g_mini;
+
 int Extra(Machine& m) {
     if (g_extra < 0) {
         const std::string s = m.Option("widescreen");
@@ -136,7 +158,7 @@ void ActorStrips(Machine& m) {
     if (!n || !g_valid || g_bg[0].empty() || g_bg[1].empty()) return;
     auto& vm = m.vm;
     g_inPass = true;
-    m.TakeSnapshot(g_snap);
+    g_mini.Take(m);
     m.HoldTasks(true);
     for (int side = 0; side < 2; ++side) {
         const int shift = side == 0 ? +n : -n;
@@ -151,7 +173,7 @@ void ActorStrips(Machine& m) {
             const uint8_t* row = vm.Ptr(screen + (uint32_t)y * kW + (uint32_t)from, (uint32_t)n);
             if (row) memcpy(&out[(size_t)y * n], row, (size_t)n);
         }
-        m.RestoreSnapshot(g_snap);
+        g_mini.Restore(m);
     }
     m.HoldTasks(false);
     g_inPass = false;
@@ -159,6 +181,9 @@ void ActorStrips(Machine& m) {
 
 // FUN_00014D58(full): the room frame. Native: the original, then the actors in the strips.
 void SceneFrame(Machine& m) {
+    // The original room loop is not paced at all - on a 486 the drawing itself was the limit. The
+    // game's logic runs from its 50 Hz tick, so one frame per 70 Hz tick is all anyone can see.
+    if (!g_inPass) PaceToTick(m);
     const uint32_t full = m.Arg(0);
     const uint32_t r = m.CallOriginal(Code(m, 0x14d58), {0, 0, 0, 0, full});
     m.vm.Set(Reg::Eax, r);
@@ -175,14 +200,15 @@ SeamList Widescreen() {
         {0x14d58, "scene_frame", "video",
          "FUN_00014D58(full): draws one frame of the isometric room - on a full redraw the background, "
          "then every actor, restoring dirty rectangles from the back buffer on the other frames. Native: "
-         "the original, then (widescreen) the same per-frame path over the shifted backgrounds to draw "
-         "the actors that stand in the side strips.",
+         "paced to one frame per 70 Hz tick (the original loop is not paced), then the original, then "
+         "(widescreen) the same per-frame path over the shifted backgrounds to draw the actors that "
+         "stand in the side strips.",
          SceneFrame, 0, 0, Seam::Ret::Near32},
         {0x14dcc, "scene_background_ready", "video",
          "The call to FUN_00026E66 inside AffScene (FUN_00014D58) that copies the finished room "
-         "background from the screen into the back buffer. Native: that copy, then the room's background "
-         "drawn twice more with the projection centre (422B4h) moved by +-N pixels, between a snapshot and "
-         "its restore, to make the left and right strips of the widescreen picture.",
+         "background from the screen into the back buffer. Native: that copy, then the room's bricks "
+         "drawn twice more with the brick origin (the 120h in FUN_00017237) moved by +-N pixels, between a "
+         "snapshot and its restore, to make the left and right strips of the widescreen picture.",
          BackgroundReady, 5, 0, Seam::Ret::Resume},
     };
 }

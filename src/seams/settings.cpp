@@ -31,6 +31,7 @@ std::vector<hlekit::ConfigOption> PortOptions() {
         {"language", "English", "Text language of the game.", {"English", "French", "German", "Spanish", "Italian"}},
         {"voice_language", "English", "Spoken language (the .VOX files). None = no speech.", {"English", "French", "German", "None"}},
         {"keep_voice", "OFF", "Keep a voice playing until it finishes.", {"ON", "OFF"}},
+        {"controls", "classic", "classic: Left/Right turn, Up walks forward (the original). direct: the arrows move Twinsen across the screen.", {"classic", "direct"}},
         {"widescreen", "off", "Widen the 3D scene to this aspect ratio. Menus and the HUD stay centered.", {"off", "16:9", "16:10", "21:9"}},
         {"display_text", "ON", "Show dialogue text on screen.", {"ON", "OFF"}},
     };

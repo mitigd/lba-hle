@@ -73,6 +73,7 @@ SeamList Sound();
 SeamList Timing();
 SeamList Settings();
 SeamList Widescreen();
+SeamList Controls();
 // Widescreen: true when config.ini asks for it; PresentWide shows the 640x480 picture with the strips.
 bool WideActive(hlekit::Machine& m);
 void WideFullScreen(hlekit::Machine& m);   // call on a full-screen present

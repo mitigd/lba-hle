@@ -4,7 +4,7 @@
 // The position the loader restores is three words (13C29Ah x, 13C296h y, 13C292h z; the main loop
 // copies them into the hero at 11392h), and his heading is his live angle. So a save where he
 // stands is the original's writer with those words set to his position for the call - everything
-// else it writes is live state. Press F9 (the key is unused by the game); a short message is drawn
+// else it writes is live state. Press F9 (unused by the game) or Ctrl+S; a short message is drawn
 // on the host picture, never into the game's screen buffer. The request is honoured at the main
 // loop's key snapshot, a point where the game is between frames, and only while Twinsen is under
 // the player's control.

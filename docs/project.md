@@ -1,0 +1,43 @@
+# Little Big Adventure — function-level HLE
+
+The original `lba.exe` runs on dos-hle-kit; only the functions at the hardware seams are replaced
+by native code. Use any decompiler you like for names and function boundaries; the kit does not
+require a particular workspace format.
+
+The seam table is split by area under `src/seams/` (video, input, sound, timing). `src/game.cpp`
+only wires the modules together.
+
+| | |
+| :-- | :-- |
+| Game directory | Not compiled in: found at startup by `--game DIR` (or an EXE path), `$HLEKIT_GAME_DIR`, the remembered directory, or next to the program (never written: writes go to the overlay) |
+| Config file | `config.ini` in the per-user directory (SDL pref path, `~/.local/share/hlekit/little-big-adventure/` on Linux), generated on first run: `language`, `voice_language`, `keep_voice`, `display_text`. Override one run with `--set language=German`. Applied by the `read_config` seam in `src/seams/settings.cpp`; the game folder's `LBA.CFG` is no longer read |
+| Sound | Music: `src/seams/music.cpp` (the game\'s play/stop/status/fade/volume functions onto the kit\'s XMIDI sequencer and FluidSynth; set `soundfont` in config.ini). Samples: `src/seams/samples.cpp` (the game\'s 18-entry sample API stubs at 28BD7h onto a native software mixer and the host audio sink; entry semantics read from `w_sb16.dll`). CD audio: `sound.cpp` (no disc). The driver DLLs are never loaded: `LBA.CFG` is generated with native device names (`src/game.cpp`) so the original init flow runs and reaches the seamed leaf functions |
+| Function labels | `docs/functions.csv` (optional CSV: address,name,size) |
+| Seam candidates | [seam-candidates.md](seam-candidates.md) (generated from the executable) |
+| Ranked candidates | [ranked-seams.md](ranked-seams.md) (heuristic video/sound/timing/input ranking) |
+| Seam modules | `src/seams/` (by area) |
+| Decompiled code | `src/decompiled/` (grows over time) |
+
+## Layout
+
+```text
+src/
+  game.cpp        GameInfo and module wiring only
+  seams/          seam modules by area + All(), which concatenates them
+  decompiled/     translated game code, by subsystem (grows over time)
+```
+
+The seam table is a plain `std::vector<Seam>`: add new source files to `meson.build` and
+concatenate their vectors in `seams::All()`. Start with HLE seams, split them by area, then
+translate game code under `src/decompiled/`, calling the original through
+`Machine::CallGuest`/`CallGuestFar` while a module is incomplete. A full decomp keeps the seam
+boundary and the original executable as the reference/fallback.
+
+## Run
+
+```bash
+meson setup build && ninja -C build
+build/lba-hle                                   # window + sound
+build/lba-hle --seams                           # the seam table, all modules
+build/lba-hle --headless --overlay /tmp/ov --seconds 10 --png shot.png   # scripted, hermetic
+```

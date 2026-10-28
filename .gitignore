@@ -1,0 +1,6 @@
+build/
+overlay/
+subprojects/.wraplock
+*.wav
+*.png
+*.img

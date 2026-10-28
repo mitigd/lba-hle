@@ -74,6 +74,12 @@ SeamList Timing();
 SeamList Settings();
 SeamList Widescreen();
 SeamList Controls();
+// Save anywhere (F9): the key requests it, the main loop's key snapshot performs it, and the
+// presenter draws the confirmation on the host picture.
+void RequestQuickSave(hlekit::Machine& m);
+void ServiceQuickSave(hlekit::Machine& m);
+bool OverlayActive();
+void DrawOverlay(uint8_t* picture640x480);
 // Widescreen: true when config.ini asks for it; PresentWide shows the 640x480 picture with the strips.
 bool WideActive(hlekit::Machine& m);
 void WideFullScreen(hlekit::Machine& m);   // call on a full-screen present

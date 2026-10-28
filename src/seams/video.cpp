@@ -107,8 +107,15 @@ void Present(Machine& m, int x1, int y1, int x2, int y2) {
         memcpy(&frame[(size_t)(y1 + y) * 640 + x1], src, (size_t)w);
     }
     LimitPresents(m);
-    if (WideActive(m)) PresentWide(m, frame.data());
-    else m.PresentFrame(frame.data(), 640, 480, 4.0 / 3.0);
+    const uint8_t* shown = frame.data();
+    static std::vector<uint8_t> withMessage;
+    if (OverlayActive()) {                       // the save confirmation, on the host picture only
+        withMessage = frame;
+        DrawOverlay(withMessage.data());
+        shown = withMessage.data();
+    }
+    if (WideActive(m)) PresentWide(m, shown);
+    else m.PresentFrame(shown, 640, 480, 4.0 / 3.0);
 }
 
 // FUN_0002701A(x1, y1, x2, y2): copies a rectangle from the game's screen buffer to the

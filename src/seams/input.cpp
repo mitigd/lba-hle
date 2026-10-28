@@ -86,6 +86,7 @@ void OnKey(hlekit::Machine& m, uint8_t xtScan, bool down, bool extended) {
     if (extended) KeyByte(m, 0xe0);
     const uint8_t raw = (uint8_t)(xtScan | (down ? 0 : 0x80));
     KeyByte(m, raw);
+    if (down && xtScan == 0x43) RequestQuickSave(m);   // F9: save where Twinsen stands
     if (down) {
         const bool shift = (m.vm.Rd8(D(m, kKeyState1)) & 0x20) != 0;
         uint16_t k = (uint16_t)(xtScan << 8) | Ascii(xtScan, shift);

@@ -37,6 +37,7 @@ bool Direct(Machine& m) {
 // diagonals set two).
 void Snapshot(Machine& m) {
     auto& vm = m.vm;
+    ServiceQuickSave(m);
     uint16_t keys = (uint16_t)vm.Get(Reg::Eax);
     const uint32_t hero = D(m, kHero);
     const bool manual = vm.Rd16(hero + kMode) == 1 && (int16_t)vm.Rd16(hero + kBody) != -1 &&

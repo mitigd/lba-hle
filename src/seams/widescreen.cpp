@@ -160,6 +160,11 @@ void ActorStrips(Machine& m) {
     g_inPass = true;
     g_mini.Take(m);
     m.HoldTasks(true);
+    // The game's own frame and the clean background it draws over: what the real frame drew this
+    // frame is the difference. AffScene also draws things at fixed screen positions (pickup icons);
+    // those would come out of a shifted pass in the same place, not moved with the world.
+    const std::vector<uint8_t> real(vm.Ptr(vm.Rd32(D(m, kScreenBase)), kW * kH), vm.Ptr(vm.Rd32(D(m, kScreenBase)), kW * kH) + (size_t)kW * kH);
+    const std::vector<uint8_t> clean(vm.Ptr(vm.Rd32(D(m, kBackBuffer)), kW * kH), vm.Ptr(vm.Rd32(D(m, kBackBuffer)), kW * kH) + (size_t)kW * kH);
     for (int side = 0; side < 2; ++side) {
         const int shift = side == 0 ? +n : -n;
         const uint32_t screen = vm.Rd32(D(m, kScreenBase)), back = vm.Rd32(D(m, kBackBuffer));
@@ -171,7 +176,15 @@ void ActorStrips(Machine& m) {
         std::vector<uint8_t>& out = side == 0 ? g_left : g_right;
         for (int y = 0; y < kH; ++y) {
             const uint8_t* row = vm.Ptr(screen + (uint32_t)y * kW + (uint32_t)from, (uint32_t)n);
-            if (row) memcpy(&out[(size_t)y * n], row, (size_t)n);
+            if (!row) continue;
+            for (int x = 0; x < n; ++x) {
+                const size_t at = (size_t)y * kW + from + x;
+                const uint8_t drawn = row[x];
+                // drawn by the pass, drawn by the real frame, and the same pixel in the same place:
+                // a fixed overlay, not part of the world - leave the background
+                const bool fixed = drawn != g_bg[side][at] && real[at] != clean[at] && drawn == real[at];
+                out[(size_t)y * n + x] = fixed ? g_bg[side][at] : drawn;
+            }
         }
         g_mini.Restore(m);
     }

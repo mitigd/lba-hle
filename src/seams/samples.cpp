@@ -16,9 +16,14 @@
 #include <algorithm>
 #include <chrono>
 #include <cstring>
+#include <mutex>
+#include <thread>
 #include <vector>
 
 namespace game::seams {
+
+std::atomic<bool> g_audioThread{false};
+
 namespace {
 
 using hlekit::Machine;
@@ -27,6 +32,8 @@ using hlekit::Seam;
 
 constexpr int kRate = 44100;
 constexpr uint32_t kBufferFrames = 2048;
+constexpr uint32_t kChunkFrames = 512;        // mixed per step on the audio thread
+constexpr double kTargetQueued = 0.10;        // seconds kept queued ahead of the device
 constexpr size_t kMaxChannels = 50;   // the driver's channel table
 
 struct Channel {
@@ -40,8 +47,11 @@ struct Channel {
 
 std::vector<Channel> g_channels;
 uint16_t g_serial = 1;
-bool g_sink = false;
+std::atomic<bool> g_sink{false};
 std::chrono::steady_clock::time_point g_last;
+std::mutex g_mixMu;             // channels are touched by the guest thread and the audio thread
+std::thread g_thread;
+std::atomic<bool> g_run{false};
 
 // The first sound block of a VOC file, as the original driver reads it: block type 1, codec 0,
 // frequency divisor at +4, length (including divisor and codec bytes) in 24 bits at +1.
@@ -117,9 +127,9 @@ void Render(int16_t* out, uint32_t frames) {
                      g_channels.end());
 }
 
-void FeedSink(Machine& m) {
-    std::vector<int16_t> buf(kBufferFrames * 2);
-    Render(buf.data(), kBufferFrames);
+void FeedSink(Machine& m, uint32_t frames) {
+    std::vector<int16_t> buf(frames * 2);
+    Render(buf.data(), frames);   // g_mixMu held by the caller
     const float g = m.gain;
     if (g < 0.999f)
         for (auto& v : buf) v = (int16_t)(v * g);
@@ -127,12 +137,52 @@ void FeedSink(Machine& m) {
     g_last = std::chrono::steady_clock::now();
 }
 
+// Runs apart from the guest thread: the guest stalls for tens of milliseconds while a scene loads,
+// which starved the device queue and cut the sound out. Here the queue is topped up on host time,
+// and the music sequencer gets its 50 Hz steps the same way.
+void AudioLoop(Machine* m) {
+    auto nextMusic = std::chrono::steady_clock::now();
+    while (g_run && !m->stopping) {
+        const auto now = std::chrono::steady_clock::now();
+        if (now >= nextMusic) {
+            ServeMusicThread(*m);
+            nextMusic += std::chrono::milliseconds(20);
+            if (now - nextMusic > std::chrono::milliseconds(100)) nextMusic = now;
+        }
+        {
+            std::lock_guard<std::mutex> lock(g_mixMu);
+            if (g_sink && m->audio) {
+                for (int i = 0; i < 16 && m->audio->QueuedSeconds() < kTargetQueued; ++i) FeedSink(*m, kChunkFrames);
+            }
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(3));
+    }
+}
+
+void StartThread(Machine& m) {
+    if (g_run) return;
+    g_run = true;
+    g_audioThread = true;
+    g_thread = std::thread(AudioLoop, &m);
+}
+
+void StopThread() {
+    g_run = false;
+    if (g_thread.joinable()) g_thread.join();
+    g_audioThread = false;
+}
+
+struct ThreadJoiner {
+    ~ThreadJoiner() { StopThread(); }
+} g_joiner;
+
 // Entries the game calls only when the device is on; the original stub returns 0 otherwise.
 using Body = void (*)(Machine&);
 Seam Entry(uint32_t addr, const char* name, const char* doc, Body body, bool gated = true) {
     return {addr, name, "sound", doc,
             [body, gated](Machine& m) {
                 if (gated && !m.vm.Rd32(D(m, kWaveOn))) { m.vm.Set(Reg::Eax, 0); return; }
+                std::lock_guard<std::mutex> lock(g_mixMu);
                 body(m);
             },
             0, 0, Seam::Ret::Near32};
@@ -142,7 +192,8 @@ Seam Entry(uint32_t addr, const char* name, const char* doc, Body body, bool gat
 
 void ServiceSamples(Machine& m) {
     // Channels must end on time even with no host sink (muted): advance them by the host clock.
-    if (g_sink && m.audio) return;
+    if (g_sink && m.audio) return;   // the audio thread keeps the queue filled
+    std::lock_guard<std::mutex> lock(g_mixMu);
     if (g_channels.empty()) { g_last = std::chrono::steady_clock::now(); return; }
     const auto now = std::chrono::steady_clock::now();
     uint32_t frames = (uint32_t)(std::chrono::duration<double>(now - g_last).count() * kRate);
@@ -167,9 +218,15 @@ SeamList Samples() {
          "calls stub 0 to find the card and start DMA; the result is stored at 42BD4h. Native: open "
          "the host sink and start the software mixer.",
          [](Machine& m) {
-             g_channels.clear();
-             g_sink = m.StartSound(kRate, 2, 16, kBufferFrames * 4, [](Machine& mm) { FeedSink(mm); });
+             StopThread();
+             {
+                 std::lock_guard<std::mutex> lock(g_mixMu);
+                 g_channels.clear();
+             }
+             // The device queue is fed by the audio thread, so the kit's refill task never fires.
+             g_sink = m.StartSound(kRate, 2, 16, 4, [](Machine&) {});
              g_last = std::chrono::steady_clock::now();
+             StartThread(m);
              m.vm.Wr32(D(m, kWaveOn), 1);
              m.vm.Set(Reg::Eax, 1);
          }, 0, 0, Seam::Ret::Near32},
@@ -181,7 +238,7 @@ SeamList Samples() {
              m.vm.Wr32(m.Arg(1), D(m, kMidiParamValues));
          }, 0, 0, Seam::Ret::Near32},
         Entry(0x28bde, "wave_shutdown", "Stub 1 (FUN_00028BDE): stop the card's DMA and release it. Native: silence the mixer.",
-              [](Machine& m) { g_channels.clear(); m.StopSound(); }),
+              [](Machine& m) { g_channels.clear(); m.StopSound(); g_sink = false; }),
         Entry(0x28bec, "sample_play",
               "Stub 3 (FUN_00028BEC): play(handle, pitch, loops, chain, volL, volR, voc). Starts a new channel "
               "on the first sound block of the Creative VOC at `voc` and returns its id. Native: copy the "

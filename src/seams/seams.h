@@ -5,6 +5,8 @@
 // access` report or by the game's own call graph.
 #pragma once
 
+#include <atomic>
+
 #include "hlekit/machine.h"
 #include "hlekit/seam.h"
 
@@ -91,6 +93,10 @@ SeamList Samples();
 // Per-tick work of the sound modules (music sequencer, mixer clock); called from the 50 Hz tick.
 void ServiceMusic(hlekit::Machine& m);
 void ServiceSamples(hlekit::Machine& m);
+// The audio thread (started with the wave device) steps the music sequencer and keeps the host
+// audio queue filled, so neither depends on the guest thread, which stalls while the game loads.
+void ServeMusicThread(hlekit::Machine& m);
+extern std::atomic<bool> g_audioThread;
 // The options the port declares in config.ini (language, ...); see settings.cpp.
 std::vector<hlekit::ConfigOption> PortOptions();
 SeamList All();

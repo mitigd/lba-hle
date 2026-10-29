@@ -10,7 +10,9 @@
 #include "hlekit/midi.h"
 
 #include <algorithm>
+#include <atomic>
 #include <memory>
+#include <mutex>
 
 namespace game::seams {
 namespace {
@@ -26,15 +28,20 @@ class CountingMidi : public hlekit::MidiOut {
 public:
     explicit CountingMidi(Machine& m) : m_(m) {}
     void Short(uint8_t status, uint8_t, uint8_t d2) override {
-        if ((status & 0xf0) == 0x90 && d2) m_.Count("midi note on");
+        if ((status & 0xf0) == 0x90 && d2) ++notes_;
     }
+    // Machine::Count is not thread-safe; the sequencer runs on the audio thread, so notes are
+    // tallied here and folded in from the guest thread.
+    void Flush() { for (uint32_t n = notes_.exchange(0); n; --n) m_.Count("midi note on"); }
     void Sysex(const uint8_t*, size_t) override {}
     void Reset() override {}
 private:
     Machine& m_;
+    std::atomic<uint32_t> notes_{0};
 };
 
 std::unique_ptr<CountingMidi> g_nullMidi;
+std::mutex g_musicMu;         // the sequencer is stepped from the audio thread
 std::unique_ptr<XmiPlayer> g_xmi;
 int g_percent = 100;          // the driver's master volume as a percent of each sequence's own
 
@@ -81,12 +88,21 @@ void Play(Machine& m) {
 
 }  // namespace
 
-void ServiceMusic(Machine& m) {
+void ServeMusicThread(Machine& m) {
+    std::lock_guard<std::mutex> lock(g_musicMu);
     if (g_xmi) g_xmi->Serve(Now(m));
 }
 
+void ServiceMusic(Machine& m) {
+    if (g_nullMidi) g_nullMidi->Flush();
+    if (g_xmi && !g_audioThread) {
+        std::lock_guard<std::mutex> lock(g_musicMu);
+        g_xmi->Serve(Now(m));
+    }
+}
+
 SeamList Music() {
-    return {
+    SeamList list = {
         {0x29c00, "midi_driver_load", "sound",
          "FUN_00029C00(file): loads the AIL XMIDI driver DLL named in LBA.CFG and asks it to find the "
          "card. Native: no driver file; always succeeds.",
@@ -157,6 +173,13 @@ SeamList Music() {
              m.vm.Wr16(D(m, kMidiOn), 0);
          }, 0, 0, Seam::Ret::Near32},
     };
+    for (Seam& seam : list) {
+        seam.fn = [fn = std::move(seam.fn)](Machine& m) {
+            std::lock_guard<std::mutex> lock(g_musicMu);
+            fn(m);
+        };
+    }
+    return list;
 }
 
 }  // namespace game::seams

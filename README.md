@@ -4,6 +4,10 @@ Little Big Adventure (1994) running on [dos-hle-kit](https://github.com/mitigd/d
 The original `lba.exe` executes on a virtual CPU; only the functions that touch hardware are
 replaced with native code. Game logic, renderers and data stay in the original binary.
 
+<p align="center">
+  <img src="assets/lba-hle-gameplay.png" alt="Little Big Adventure running in lba-hle with a widescreen room view" width="800">
+</p>
+
 ## Status
 
 The port currently gets through the intro, the menus and the isometric rooms with keyboard

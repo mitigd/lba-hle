@@ -3,4 +3,5 @@ overlay/
 subprojects/.wraplock
 *.wav
 *.png
+!assets/*.png
 *.img

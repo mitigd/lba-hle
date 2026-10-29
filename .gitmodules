@@ -1,0 +1,3 @@
+[submodule "subprojects/dos-hle-kit"]
+	path = subprojects/dos-hle-kit
+	url = https://github.com/mitigd/dos-hle-kit.git

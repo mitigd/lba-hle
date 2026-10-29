@@ -75,18 +75,24 @@ void SelectVesa(Machine& m) {
 
 // The original's banked VRAM copies were slow enough to pace its menu redraw loops; native
 // copies are not, so a loop that redraws without waiting for retrace would present thousands of
-// times a second. A frame may present up to kPresentsPerTick rects (several per game frame is
-// normal); past that the caller sleeps to the next 70 Hz tick. Game logic is unaffected.
-void LimitPresents(Machine& m) {
-    constexpr int kPresentsPerTick = 4;
+// times a second. A tick (70 Hz) may present up to kAreaPerTick pixels - a few full screens, as
+// menus do - and past that the caller sleeps to the next tick. Small rects (the intro text
+// draws one per glyph) are cheap and cost by area; kPresentsPerTick only backstops a spin loop of
+// tiny ones. Game logic is unaffected.
+void LimitPresents(Machine& m, int area) {
+    constexpr int kAreaPerTick = 4 * 640 * 480;
+    constexpr int kPresentsPerTick = 512;
     constexpr auto period = std::chrono::microseconds(14286);
     static int64_t tick = -1;
-    static int count = 0;
+    static int used = 0, count = 0;
     const int64_t now = (std::chrono::steady_clock::now() - m.t0) / period;
-    if (now != tick) { tick = now; count = 0; }
-    if (++count <= kPresentsPerTick) return;
+    if (now != tick) { tick = now; used = 0; count = 0; }
+    used += area;
+    ++count;
+    if (used <= kAreaPerTick && count <= kPresentsPerTick) return;
     PaceToTick(m);
     tick = (std::chrono::steady_clock::now() - m.t0) / period;
+    used = area;
     count = 1;
 }
 
@@ -106,7 +112,7 @@ void Present(Machine& m, int x1, int y1, int x2, int y2) {
         if (!src) return;
         memcpy(&frame[(size_t)(y1 + y) * 640 + x1], src, (size_t)w);
     }
-    LimitPresents(m);
+    LimitPresents(m, w * h);
     const uint8_t* shown = frame.data();
     static std::vector<uint8_t> withMessage;
     if (OverlayActive()) {                       // the save confirmation, on the host picture only

@@ -76,6 +76,7 @@ SeamList Timing();
 SeamList Settings();
 SeamList Widescreen();
 SeamList Controls();
+SeamList Intro();   // skips the startup logos and the DRAGON3 FLA
 // Save anywhere (F9): the key requests it, the main loop's key snapshot performs it, and the
 // presenter draws the confirmation on the host picture.
 void RequestQuickSave(hlekit::Machine& m);

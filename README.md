@@ -104,6 +104,7 @@ defaults and comments on first start.
 | `widescreen` | `off` | off, 16:9, 16:10, 21:9 | Widen the room view |
 | `controls` | `classic` | classic, direct | Tank controls or arrow-key movement |
 | `save_anywhere` | `on` | on, off | F9 or Ctrl+S saves where Twinsen stands |
+| `skip_intro` | `on` | on, off | Start at the main menu, skipping the logo screens and the intro film |
 
 The original has no mouse or gamepad control, and the port does not add any: input is keyboard
 only. The unused mouse and pad callbacks in `src/seams/input.cpp` are template leftovers.
